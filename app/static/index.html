@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reenvio de Procesos</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body {
+      background: #0a0e1a;
+      min-height: 100vh;
+    }
+    .navbar {
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      background: #0d1117 !important;
+    }
+    .card {
+      background: #131825;
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 12px;
+    }
+    .card-header {
+      background: transparent;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      font-weight: 600;
+      padding: 1rem 1.25rem;
+    }
+    .badge-health {
+      font-size: .8rem;
+      padding: .35em .75em;
+    }
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .table > :not(caption) > * > * {
+      background: transparent;
+      border-bottom-color: rgba(255,255,255,.06);
+    }
+    .table > thead {
+      border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .table > thead > tr > th {
+      color: rgba(255,255,255,.55);
+      font-weight: 500;
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      border-bottom: none;
+    }
+    .table-hover > tbody > tr:hover {
+      background: rgba(255,255,255,.03);
+    }
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .result-item {
+      background: rgba(255,255,255,.03);
+      border-radius: 8px;
+      padding: .75rem 1rem;
+    }
+    .result-item .label {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: rgba(255,255,255,.45);
+      margin-bottom: .25rem;
+    }
+    .result-item .value {
+      font-size: .95rem;
+      font-weight: 500;
+      word-break: break-all;
+    }
+    .history-empty {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: rgba(255,255,255,.3);
+    }
+    .history-empty i {
+      font-size: 2.5rem;
+      margin-bottom: .75rem;
+      display: block;
+    }
+    #loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10,14,26,.6);
+      backdrop-filter: blur(2px);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+    #loading-overlay.show {
+      display: flex;
+    }
+    .toast-container {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      z-index: 9998;
+    }
+    .detail-json {
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0,0,0,.3);
+      border-radius: 6px;
+      padding: .5rem .75rem;
+      font-family: 'SF Mono','Fira Code','Cascadia Code',monospace;
+      font-size: .8rem;
+    }
+    .footer-info {
+      text-align: center;
+      color: rgba(255,255,255,.25);
+      font-size: .8rem;
+      padding: 1.5rem 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand">
+    <div class="container">
+      <span class="navbar-brand mb-0 h1">
+        <i class="fa-solid fa-cloud-arrow-up text-info me-2"></i>
+        API Integraci&oacute;n AUCO
+      </span>
+      <div class="d-flex align-items-center gap-3">
+        <span class="badge badge-health" id="healthBadge">
+          <i class="fa-solid fa-circle-notch fa-spin me-1"></i>
+          Verificando...
+        </span>
+        <span class="text-light-emphasis small d-none d-sm-inline">
+          <i class="fa-regular fa-clock me-1"></i>
+          <span id="clockSpan"></span>
+        </span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Toast container -->
+  <div class="toast-container">
+    <div id="toast" class="toast align-items-center text-bg-danger border-0" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastBody"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay">
+    <div class="text-center">
+      <div class="spinner-border text-info" style="width:3rem;height:3rem;" role="status">
+        <span class="visually-hidden">Cargando...</span>
+      </div>
+      <p class="text-light-emphasis mt-2 mb-0" id="loadingMsg">Procesando...</p>
+    </div>
+  </div>
+
+  <div class="container py-4">
+
+    <!-- Input card -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="fa-regular fa-file-lines me-2 text-info"></i>
+        Documento
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label for="codeInput" class="form-label small text-light-emphasis">
+            C&oacute;digo del documento
+          </label>
+          <input
+            type="text"
+            class="form-control form-control-lg"
+            id="codeInput"
+            placeholder="Ej: DOC-12345"
+            autofocus
+          >
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-outline-info btn-lg btn-icon flex-fill" id="btnConsultar">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            Consultar
+          </button>
+          <button class="btn btn-info btn-lg btn-icon flex-fill" id="btnEnviar">
+            <i class="fa-solid fa-paper-plane"></i>
+            Enviar a Salesforce
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results card -->
+    <div class="card mb-4 d-none" id="resultsCard">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>
+          <i class="fa-regular fa-chart-bar me-2 text-info"></i>
+          Resultados
+        </span>
+        <button class="btn btn-sm btn-outline-secondary" id="btnCloseResults" title="Cerrar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="card-body" id="resultsBody">
+        <div class="result-grid" id="resultGrid"></div>
+        <div id="resultError" class="d-none mt-3"></div>
+        <div id="resultWebhook" class="d-none mt-3">
+          <div class="label small text-light-emphasis mb-1">Respuesta del webhook</div>
+          <div class="detail-json" id="resultWebhookJson"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History card -->
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>
+          <i class="fa-regular fa-clock me-2 text-info"></i>
+          Historial de Operaciones
+        </span>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-info" id="btnRefreshHistorial" title="Refrescar">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger" id="btnLimpiarHistorial" title="Limpiar historial">
+            <i class="fa-regular fa-trash-can me-1"></i>
+            Limpiar
+          </button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0" id="historyTable">
+            <thead>
+              <tr>
+                <th>C&oacute;digo</th>
+                <th>Acci&oacute;n</th>
+                <th>API Status</th>
+                <th>Mapeado</th>
+                <th>Webhook</th>
+                <th>Error</th>
+                <th class="text-end">Hora</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+        <div id="historyEmpty" class="history-empty">
+          <i class="fa-regular fa-rectangle-list"></i>
+          <p class="mb-0">No hay operaciones registradas</p>
+        </div>
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top border-secondary border-opacity-10" id="historyFooter">
+          <span class="small text-light-emphasis" id="historyCount">0 registros</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-info">
+      <i class="fa-regular fa-circle-check me-1"></i>
+      API Integraci&oacute;n AUCO &mdash; Middleware AUCO &rarr; Salesforce
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
+  </script>
+  <script>
+    (function () {
+      'use strict';
+
+      const DOM = {
+        codeInput: document.getElementById('codeInput'),
+        btnConsultar: document.getElementById('btnConsultar'),
+        btnEnviar: document.getElementById('btnEnviar'),
+        resultsCard: document.getElementById('resultsCard'),
+        resultsBody: document.getElementById('resultsBody'),
+        resultGrid: document.getElementById('resultGrid'),
+        resultError: document.getElementById('resultError'),
+        resultWebhook: document.getElementById('resultWebhook'),
+        resultWebhookJson: document.getElementById('resultWebhookJson'),
+        btnCloseResults: document.getElementById('btnCloseResults'),
+        historyBody: document.getElementById('historyBody'),
+        historyEmpty: document.getElementById('historyEmpty'),
+        historyFooter: document.getElementById('historyFooter'),
+        historyCount: document.getElementById('historyCount'),
+        btnRefreshHistorial: document.getElementById('btnRefreshHistorial'),
+        btnLimpiarHistorial: document.getElementById('btnLimpiarHistorial'),
+        healthBadge: document.getElementById('healthBadge'),
+        clockSpan: document.getElementById('clockSpan'),
+        loadingOverlay: document.getElementById('loading-overlay'),
+        loadingMsg: document.getElementById('loadingMsg'),
+        toast: document.getElementById('toast'),
+        toastBody: document.getElementById('toastBody'),
+      };
+
+      const toast = DOM.toast ? new bootstrap.Toast(DOM.toast, { delay: 4000 }) : null;
+
+      function showToast(msg, type) {
+        if (!toast) return;
+        DOM.toast.className = 'toast align-items-center border-0 text-bg-' + (type || 'danger');
+        DOM.toastBody.textContent = msg;
+        toast.show();
+      }
+
+      function showLoading(msg) {
+        DOM.loadingMsg.textContent = msg || 'Procesando...';
+        DOM.loadingOverlay.classList.add('show');
+      }
+
+      function hideLoading() {
+        DOM.loadingOverlay.classList.remove('show');
+      }
+
+      function getCode() {
+        return DOM.codeInput.value.trim();
+      }
+
+      function setButtonsLoading(loading) {
+        DOM.btnConsultar.disabled = loading;
+        DOM.btnEnviar.disabled = loading;
+        if (loading) {
+          DOM.btnConsultar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Consultando...';
+          DOM.btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+        } else {
+          DOM.btnConsultar.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Consultar';
+          DOM.btnEnviar.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar a Salesforce';
+        }
+      }
+
+      // --- Badge helpers ---
+      function statusBadge(status) {
+        if (!status || status === 'null') return '<span class="badge bg-secondary">—</span>';
+        var s = status.toUpperCase();
+        var map = {
+          'FINISH': 'bg-success',
+          'REJECTED': 'bg-warning text-dark',
+          'REJECT': 'bg-warning text-dark',
+          'CREATED': 'bg-info text-dark',
+          'CREATE': 'bg-info text-dark',
+          'ERROR': 'bg-danger',
+          'TRUE': 'bg-success',
+          'FALSE': 'bg-secondary',
+        };
+        var cls = map[s] || 'bg-secondary';
+        return '<span class="badge ' + cls + '">' + status + '</span>';
+      }
+
+      function webhookBadge(sent) {
+        if (sent === true || sent === 'true' || sent === 'True')
+          return '<span class="badge bg-success"><i class="fa-regular fa-circle-check me-1"></i>Enviado</span>';
+        if (sent === false || sent === 'false' || sent === 'False')
+          return '<span class="badge bg-secondary"><i class="fa-regular fa-circle-xmark me-1"></i>No</span>';
+        return '<span class="badge bg-secondary">—</span>';
+      }
+
+      // --- Health check ---
+      async function checkHealth() {
+        try {
+          var resp = await fetch('/api/health');
+          var data = await resp.json();
+          if (data.status === 'healthy') {
+            DOM.healthBadge.className = 'badge badge-health bg-success';
+            DOM.healthBadge.innerHTML = '<i class="fa-regular fa-circle-check me-1"></i> Operativo';
+          } else {
+            throw new Error('unexpected');
+          }
+        } catch (_) {
+          DOM.healthBadge.className = 'badge badge-health bg-danger';
+          DOM.healthBadge.innerHTML = '<i class="fa-regular fa-circle-xmark me-1"></i> Ca&iacute;do';
+        }
+      }
+
+      // --- Clock ---
+      function updateClock() {
+        var d = new Date();
+        DOM.clockSpan.textContent = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+
+      // --- Render results ---
+      function renderResults(data, action) {
+        DOM.resultGrid.innerHTML = '';
+        DOM.resultError.classList.add('d-none');
+        DOM.resultWebhook.classList.add('d-none');
+
+        var items = [];
+
+        if (action === 'consultar') {
+          items.push(
+            { label: 'C&oacute;digo', value: data.code || '—' },
+            { label: 'Estado API', value: statusBadge(data.data ? data.data.status || data.data.estado : '—') },
+            { label: 'Respuesta completa', value: '<div class="detail-json">' + safeJSON(data.data) + '</div>' },
+          );
+        } else {
+          items.push(
+            { label: 'C&oacute;digo', value: data.code || '—' },
+            { label: 'Estado API', value: statusBadge(data.api_get_status) },
+            { label: 'Estado mapeado', value: statusBadge(data.mapped_status) },
+            { label: 'Webhook enviado', value: webhookBadge(data.webhook_sent) },
+          );
+
+          if (data.error) {
+            DOM.resultError.classList.remove('d-none');
+            DOM.resultError.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fa-regular fa-circle-exclamation me-2"></i>' + escHtml(data.error) + '</div>';
+          }
+
+          if (data.webhook_response) {
+            DOM.resultWebhook.classList.remove('d-none');
+            DOM.resultWebhookJson.textContent = JSON.stringify(data.webhook_response, null, 2);
+          }
+        }
+
+        items.forEach(function (item) {
+          var div = document.createElement('div');
+          div.className = 'result-item';
+          div.innerHTML = '<div class="label">' + item.label + '</div><div class="value">' + item.value + '</div>';
+          DOM.resultGrid.appendChild(div);
+        });
+
+        DOM.resultsCard.classList.remove('d-none');
+      }
+
+      function safeJSON(obj) {
+        try {
+          return escHtml(JSON.stringify(obj, null, 2));
+        } catch (_) {
+          return '—';
+        }
+      }
+
+      function escHtml(str) {
+        if (!str) return '—';
+        var d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+      }
+
+      // --- Consultar ---
+      async function consultar() {
+        var code = getCode();
+        if (!code) { showToast('Ingrese un c&oacute;digo de documento', 'warning'); return; }
+        setButtonsLoading(true);
+        try {
+          var resp = await fetch('/api/document/' + encodeURIComponent(code));
+          var data = await resp.json();
+          if (!resp.ok) {
+            showToast(data.detail || 'Error al consultar documento', 'danger');
+            return;
+          }
+          renderResults(data, 'consultar');
+        } catch (err) {
+          showToast('Error de conexi&oacute;n: ' + err.message, 'danger');
+        } finally {
+          setButtonsLoading(false);
+        }
+      }
+
+      // --- Enviar a Salesforce ---
+      async function enviar() {
+        var code = getCode();
+        if (!code) { showToast('Ingrese un c&oacute;digo de documento', 'warning'); return; }
+        setButtonsLoading(true);
+        showLoading('Enviando a Salesforce...');
+        try {
+          var resp = await fetch('/api/reprocess', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code, refresh: true }),
+          });
+          var data = await resp.json();
+          if (!resp.ok) {
+            showToast(data.detail || 'Error al reprocesar', 'danger');
+            return;
+          }
+          renderResults(data, 'reprocess');
+          cargarHistorial();
+        } catch (err) {
+          showToast('Error de conexi&oacute;n: ' + err.message, 'danger');
+        } finally {
+          setButtonsLoading(false);
+          hideLoading();
+        }
+      }
+
+      // --- Historial ---
+      async function cargarHistorial() {
+        try {
+          var resp = await fetch('/api/historial');
+          var data = await resp.json();
+          var list = data.historial || [];
+          renderHistorial(list);
+        } catch (_) {
+          // silent
+        }
+      }
+
+      function renderHistorial(list) {
+        var tbody = DOM.historyBody;
+        tbody.innerHTML = '';
+        if (!list || list.length === 0) {
+          DOM.historyEmpty.style.display = 'block';
+          DOM.historyFooter.style.display = 'none';
+          return;
+        }
+        DOM.historyEmpty.style.display = 'none';
+        DOM.historyFooter.style.display = 'flex';
+
+        list.forEach(function (entry) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><code>' + escHtml(entry.codigo) + '</code></td>' +
+            '<td>' + escHtml(entry.accion) + '</td>' +
+            '<td>' + statusBadge(entry.api_status) + '</td>' +
+            '<td>' + statusBadge(entry.mapped_status) + '</td>' +
+            '<td>' + webhookBadge(entry.webhook_sent) + '</td>' +
+            '<td>' + (entry.error ? '<span class="text-danger small"><i class="fa-regular fa-circle-exclamation me-1"></i>' + escHtml(entry.error.substring(0, 30)) + '</span>' : '<span class="text-light-emphasis small">—</span>') + '</td>' +
+            '<td class="text-end text-light-emphasis small">' + escHtml(entry.hora) + '</td>';
+          tbody.appendChild(tr);
+        });
+
+        DOM.historyCount.textContent = list.length + ' registro' + (list.length !== 1 ? 's' : '');
+      }
+
+      // --- Limpiar historial ---
+      async function limpiarHistorial() {
+        if (!confirm('¿Est&aacute; seguro de limpiar todo el historial?')) return;
+        try {
+          var resp = await fetch('/api/historial', { method: 'DELETE' });
+          var data = await resp.json();
+          if (data.succes) {
+            renderHistorial([]);
+            showToast(data.message || 'Historial limpiado', 'success');
+          }
+        } catch (err) {
+          showToast('Error al limpiar historial: ' + err.message, 'danger');
+        }
+      }
+
+      // --- Enter key ---
+      DOM.codeInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') consultar();
+      });
+
+      // --- Event listeners ---
+      DOM.btnConsultar.addEventListener('click', consultar);
+      DOM.btnEnviar.addEventListener('click', enviar);
+      DOM.btnCloseResults.addEventListener('click', function () {
+        DOM.resultsCard.classList.add('d-none');
+      });
+      DOM.btnRefreshHistorial.addEventListener('click', cargarHistorial);
+      DOM.btnLimpiarHistorial.addEventListener('click', limpiarHistorial);
+
+      // --- Init ---
+      checkHealth();
+      updateClock();
+      cargarHistorial();
+      setInterval(checkHealth, 30000);
+      setInterval(updateClock, 1000);
+
+    })();
+  </script>
+</body>
+</html>
